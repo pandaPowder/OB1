@@ -34,6 +34,31 @@
 --             'evening', 'habit_reminder', 'weekly_review', 'custom'));
 --
 -- 4. Create life_engine_state table (see below — CREATE IF NOT EXISTS is safe).
+--
+-- 5. Prevent duplicate same-day briefings (morning/evening/checkin/weekly_review
+--    are meant to fire at most once per day; pre_meeting/habit_reminder/custom
+--    are intentionally multi-per-day and are NOT covered by this guard):
+--
+--    -- Dry run first — see what would collapse:
+--    SELECT user_id, briefing_type, (created_at AT TIME ZONE 'UTC')::date AS d, count(*)
+--    FROM life_engine_briefings
+--    GROUP BY 1, 2, 3 HAVING count(*) > 1;
+--
+--    -- Collapse existing same-day duplicates for the four guarded types,
+--    -- keeping the earliest per (user, type, day):
+--    DELETE FROM life_engine_briefings a
+--    USING life_engine_briefings b
+--    WHERE a.user_id = b.user_id
+--      AND a.briefing_type = b.briefing_type
+--      AND a.briefing_type IN ('morning', 'evening', 'checkin', 'weekly_review')
+--      AND (a.created_at AT TIME ZONE 'UTC')::date = (b.created_at AT TIME ZONE 'UTC')::date
+--      AND a.created_at > b.created_at;
+--
+--    -- Then add the guard (also included in the main CREATE section below,
+--    -- so fresh installs get this automatically):
+--    CREATE UNIQUE INDEX IF NOT EXISTS life_engine_briefings_daily_type_uniq
+--      ON life_engine_briefings (user_id, briefing_type, ((created_at AT TIME ZONE 'UTC')::date))
+--      WHERE briefing_type IN ('morning', 'evening', 'checkin', 'weekly_review');
 
 -- ----------------------------------------
 -- Habit definitions
@@ -194,6 +219,13 @@ CREATE INDEX IF NOT EXISTS idx_le_briefings_user_date
 
 CREATE INDEX IF NOT EXISTS idx_le_briefings_type_date
   ON life_engine_briefings(user_id, briefing_type, created_at DESC);
+
+-- Duplicate-prevention guard: at most one briefing per (user, type, day) for
+-- the four types meant to fire once daily. pre_meeting/habit_reminder/custom
+-- are intentionally multi-per-day and are excluded from this constraint.
+CREATE UNIQUE INDEX IF NOT EXISTS life_engine_briefings_daily_type_uniq
+  ON life_engine_briefings (user_id, briefing_type, ((created_at AT TIME ZONE 'UTC')::date))
+  WHERE briefing_type IN ('morning', 'evening', 'checkin', 'weekly_review');
 
 CREATE INDEX IF NOT EXISTS idx_le_evolution_user_date
   ON life_engine_evolution(user_id, created_at DESC);

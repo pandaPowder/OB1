@@ -715,7 +715,7 @@ No two Life Engines look the same. Yours adapts to your schedule, your habits, y
 | **Plugin not loading** | Check `~/.claude/channels/telegram/.env` exists with your bot token. Try `/reload-plugins` in the session |
 | **Calendar not showing events** | Run `/mcp` and verify Google Calendar is connected |
 | **Open Brain returns nothing** | Test with: *"Search my Open Brain for [topic]"* — you may need more captured thoughts |
-| **Duplicate briefings** | The skill checks `life_engine_briefings` before sending. If duplicates occur, verify Supabase connection |
+| **Duplicate briefings** | `schema.sql` (v1.2.0+) adds a DB constraint so `morning`/`evening`/`checkin`/`weekly_review` can happen at most once/day — the skill claims via an idempotent insert before sending and aborts if it's already claimed, so this is now a database guarantee rather than a check the agent has to remember. If you're on an older schema version, apply migration step 5 in `schema.sql`'s upgrade block. `pre_meeting`/`habit_reminder`/`custom` are intentionally multi-per-day and aren't covered by this guard — for those, duplicates mean two overlapping cycles both matched the same event/habit; check `life_engine_briefings` content for the specific instance |
 | **Claude suggests too many changes** | The self-improvement protocol limits to 1 suggestion per 7 days. Adjust in the skill if needed |
 
 ---
